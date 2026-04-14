@@ -276,6 +276,8 @@ let state = {
   detailItem: null,
   authUser: null,         // obiekt Supabase user
   isAdmin: false,
+  selectedEventId: null,  // aktualnie otwarty event
+  evSearch: '',            // szukaj w widoku eventu
 };
 
 function getUserName() {
@@ -674,6 +676,8 @@ function renderInventory() {
 
 // ─── EVENTS VIEW ───
 function renderEvents() {
+  if (state.selectedEventId) return renderEventDetail(state.selectedEventId);
+
   return `
     <div class="topbar">
       <div><div class="page-title">Eventy</div><div class="page-subtitle">${state.events.length} eventów w bazie</div></div>
@@ -684,20 +688,122 @@ function renderEvents() {
     <div class="table-wrap">
       ${!state.events.length ? `<div class="empty"><div class="empty-icon">📅</div><p>Brak eventów. Dodaj pierwszy event aby przypisywać do niego sprzęt.</p></div>` : `
       <table>
-        <thead><tr><th>Nazwa eventu</th><th>Miasto</th><th>Data od</th><th>Data do</th><th>Sprzęt</th><th>Uwagi</th></tr></thead>
+        <thead><tr><th>Nazwa eventu</th><th>Miasto</th><th>Data od</th><th>Data do</th><th>Sprzęt</th><th>Uwagi</th><th></th></tr></thead>
         <tbody>${state.events.map(e => {
           const count = state.items.filter(i=>i.event_id===e.id).length;
           return `<tr>
-            <td class="name">${esc(e.nazwa)}</td>
+            <td class="name" style="cursor:pointer" onclick="openEventDetail('${e.id}')">${esc(e.nazwa)}</td>
             <td class="muted">${esc(e.miasto||'—')}</td>
             <td class="mono">${e.date_start||'—'}</td>
             <td class="mono">${e.date_end||'—'}</td>
-            <td><span class="badge" style="background:var(--bg3);color:var(--text2)">${count} szt.</span></td>
+            <td><span class="badge" style="background:var(--bg3);color:var(--text2);cursor:pointer" onclick="openEventDetail('${e.id}')">${count} szt.</span></td>
             <td class="muted" style="font-size:13px">${esc(e.uwagi||'—')}</td>
+            <td style="text-align:right">
+              <button class="btn btn-sm btn-ghost" onclick="openEventDetail('${e.id}')">Zarządzaj sprzętem →</button>
+            </td>
           </tr>`;
         }).join('')}</tbody>
       </table>`}
     </div>`;
+}
+
+function openEventDetail(id) { state.selectedEventId = id; state.evSearch = ''; render(); }
+function closeEventDetail() { state.selectedEventId = null; render(); }
+
+function renderEventDetail(eventId) {
+  const ev = state.events.find(e => e.id === eventId);
+  if (!ev) return '';
+
+  const assigned = state.items.filter(i => i.event_id === eventId);
+  const q = (state.evSearch||'').toLowerCase();
+  const allItems = state.items.filter(i =>
+    !i.event_id || i.event_id === eventId
+  ).filter(i => !q || (i.nazwa+i.kategoria+i.lokalizacja).toLowerCase().includes(q));
+
+  return `
+    <div class="topbar">
+      <div>
+        <button class="btn btn-ghost" style="margin-bottom:8px;padding:0;border:none;color:var(--text3);font-size:13px" onclick="closeEventDetail()">← Powrót do eventów</button>
+        <div class="page-title">${esc(ev.nazwa)}</div>
+        <div class="page-subtitle">${ev.miasto||''} ${ev.date_start ? '· '+ev.date_start : ''} ${ev.date_end ? '– '+ev.date_end : ''}</div>
+      </div>
+      <div class="topbar-actions">
+        <span style="font-size:13px;color:var(--text2);align-self:center">${assigned.length} pozycji przypisanych</span>
+      </div>
+    </div>
+
+    ${assigned.length > 0 ? `
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;color:var(--text3);font-family:var(--mono);letter-spacing:.05em;margin-bottom:10px">PRZYPISANY SPRZĘT</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Nazwa</th><th>Kategoria</th><th>Ilość</th><th>Stan</th><th>Lokalizacja</th><th></th></tr></thead>
+          <tbody>${assigned.map(i=>`<tr>
+            <td class="name">${esc(i.nazwa)}</td>
+            <td class="muted">${esc(i.kategoria||'—')}</td>
+            <td class="mono">${i.ilosc}</td>
+            <td>${badgeHtml(i.stan)}</td>
+            <td class="muted">${esc(i.lokalizacja||'—')}</td>
+            <td style="text-align:right">${state.isAdmin?`<button class="btn btn-sm btn-danger" onclick="unassignFromEvent('${i.id}')">Odepnij</button>`:''}
+            </td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>` : ''}
+
+    ${state.isAdmin ? `
+    <div style="font-size:12px;color:var(--text3);font-family:var(--mono);letter-spacing:.05em;margin-bottom:10px">DOSTĘPNY SPRZĘT (bez przypisanego eventu + już przypisany do tego eventu)</div>
+    <div class="filters" style="margin-bottom:12px">
+      <input type="text" id="ev-search" placeholder="Szukaj sprzętu..." value="${esc(state.evSearch||'')}">
+    </div>
+    <div class="table-wrap">
+      ${!allItems.length ? `<div class="empty"><div class="empty-icon">📦</div><p>Brak dostępnego sprzętu.</p></div>` : `
+      <table>
+        <thead><tr>
+          <th style="width:36px"></th>
+          <th>Nazwa</th><th>Kategoria</th><th>Ilość</th><th>Stan</th><th>Lokalizacja</th>
+        </tr></thead>
+        <tbody>${allItems.map(i => {
+          const isAssigned = i.event_id === eventId;
+          return `<tr style="${isAssigned?'background:rgba(124,106,247,0.06)':''}">
+            <td>
+              <input type="checkbox" ${isAssigned?'checked':''} onchange="toggleEventAssign('${i.id}','${eventId}',this.checked)"
+                style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)">
+            </td>
+            <td class="name">${esc(i.nazwa)}${isAssigned?` <span style="font-size:11px;color:var(--accent2);font-family:var(--mono)">✓</span>`:''}
+            </td>
+            <td class="muted">${esc(i.kategoria||'—')}</td>
+            <td class="mono">${i.ilosc}</td>
+            <td>${badgeHtml(i.stan)}</td>
+            <td class="muted">${esc(i.lokalizacja||'—')}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>`}
+    </div>` : `
+    <div class="table-wrap">
+      <div class="empty"><div class="empty-icon">🔒</div><p>Tylko admin może zarządzać sprzętem eventu.</p></div>
+    </div>`}
+  `;
+}
+
+async function toggleEventAssign(itemId, eventId, assign) {
+  if (!sb) return;
+  const newEventId = assign ? eventId : null;
+  const { error } = await sb.from('equipment').update({ event_id: newEventId }).eq('id', itemId);
+  if (error) { toast('Błąd: '+error.message,'error'); return; }
+  const item = state.items.find(i=>i.id===itemId);
+  if (item) item.event_id = newEventId;
+  const user = getUserName()||'nieznany';
+  const ev = state.events.find(e=>e.id===eventId);
+  await sb.from('equipment_history').insert({
+    equipment_id: itemId, action: assign?'przypisano do eventu':'odpisano z eventu',
+    user_name: user, details: `Event: ${ev?.nazwa||eventId}`
+  });
+  await loadItems(); render();
+}
+
+async function unassignFromEvent(itemId) {
+  await toggleEventAssign(itemId, null, false);
 }
 
 // ─── HISTORY VIEW ───
@@ -1028,6 +1134,8 @@ function bindEvents() {
   if (sf) sf.addEventListener('change', e => { state.filterStan = e.target.value; render(); });
   const imp = document.getElementById('import-file');
   if (imp) imp.addEventListener('change', handleImportFile);
+  const evs = document.getElementById('ev-search');
+  if (evs) evs.addEventListener('input', e => { state.evSearch = e.target.value; render(); });
 }
 
 // ─── HELPERS ───
