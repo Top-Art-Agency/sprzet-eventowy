@@ -487,43 +487,61 @@ CREATE POLICY "public_all" ON equipment_history FOR ALL USING (true) WITH CHECK 
 }
 
 function renderLoginScreen() {
+  const isReset = window.location.hash.includes('type=recovery');
   return `<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;background:var(--bg)">
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:44px 36px;width:100%;max-width:400px;text-align:center">
-      <div style="font-family:var(--mono);font-size:11px;color:var(--accent2);letter-spacing:.1em;margin-bottom:16px">SPRZĘT EVENTOWY</div>
-      <h2 style="font-size:22px;font-weight:600;margin-bottom:8px">Zaloguj się</h2>
-      <p style="font-size:14px;color:var(--text2);margin-bottom:32px;line-height:1.6">Dostęp tylko dla kont <span style="color:var(--accent2);font-family:var(--mono)">@${ALLOWED_DOMAIN}</span></p>
-      <button class="btn" onclick="loginGoogle()" style="width:100%;justify-content:center;margin-bottom:12px;height:44px;font-size:15px;gap:10px">
-        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-        Zaloguj przez Google
-      </button>
-      <button class="btn" onclick="loginMicrosoft()" style="width:100%;justify-content:center;height:44px;font-size:15px;gap:10px">
-        <svg width="18" height="18" viewBox="0 0 24 24"><rect x="1" y="1" width="10" height="10" fill="#F25022"/><rect x="13" y="1" width="10" height="10" fill="#7FBA00"/><rect x="1" y="13" width="10" height="10" fill="#00A4EF"/><rect x="13" y="13" width="10" height="10" fill="#FFB900"/></svg>
-        Zaloguj przez Microsoft
-      </button>
-      <div id="login-error" style="margin-top:16px;font-size:13px;color:var(--red);display:none"></div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:44px 36px;width:100%;max-width:400px">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--accent2);letter-spacing:.1em;margin-bottom:16px;text-align:center">SPRZĘT EVENTOWY v${APP_VERSION}</div>
+      <h2 style="font-size:22px;font-weight:600;margin-bottom:6px;text-align:center">${isReset ? 'Ustaw nowe hasło' : 'Zaloguj się'}</h2>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:28px;text-align:center">Dostęp tylko dla kont <span style="color:var(--accent2);font-family:var(--mono)">@${ALLOWED_DOMAIN}</span></p>
+      ${isReset ? `
+      <div class="field"><label>Nowe hasło</label><input id="l-newpass" type="password" placeholder="min. 8 znaków"></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;height:42px;margin-top:4px" onclick="doResetPassword()">Ustaw hasło</button>
+      ` : `
+      <div class="field"><label>Email</label><input id="l-email" type="email" placeholder="jan@topart.pl" onkeydown="if(event.key==='Enter')document.getElementById('l-pass').focus()"></div>
+      <div class="field"><label>Hasło</label><input id="l-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <div style="text-align:right;margin:-6px 0 16px">
+        <button class="btn btn-ghost" style="font-size:12px;height:auto;padding:4px 0;border:none" onclick="showForgotPassword()">Zapomniałem hasła</button>
+      </div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;height:42px" onclick="doLogin()">Zaloguj się →</button>
+      `}
+      <div id="login-msg" style="margin-top:14px;font-size:13px;text-align:center;display:none"></div>
     </div>
   </div>`;
 }
 
-async function loginGoogle() {
-  const { error } = await sb.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: window.location.href, queryParams: { hd: ALLOWED_DOMAIN } }
-  });
-  if (error) showLoginError(error.message);
+async function doLogin() {
+  const email = document.getElementById('l-email')?.value?.trim();
+  const pass  = document.getElementById('l-pass')?.value;
+  if (!email || !pass) { showLoginMsg('Wypełnij email i hasło.', 'error'); return; }
+  if (!email.endsWith('@' + ALLOWED_DOMAIN)) { showLoginMsg('Tylko konta @' + ALLOWED_DOMAIN, 'error'); return; }
+  showLoginMsg('Logowanie...', 'info');
+  const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) showLoginMsg(error.message === 'Invalid login credentials' ? 'Błędny email lub hasło.' : error.message, 'error');
 }
 
-async function loginMicrosoft() {
-  const { error } = await sb.auth.signInWithOAuth({
-    provider: 'azure',
-    options: { redirectTo: window.location.href, scopes: 'email' }
-  });
-  if (error) showLoginError(error.message);
+async function doResetPassword() {
+  const pass = document.getElementById('l-newpass')?.value;
+  if (!pass || pass.length < 8) { showLoginMsg('Hasło musi mieć min. 8 znaków.', 'error'); return; }
+  const { error } = await sb.auth.updateUser({ password: pass });
+  if (error) { showLoginMsg(error.message, 'error'); return; }
+  showLoginMsg('Hasło ustawione! Przekierowuję...', 'success');
+  setTimeout(() => { window.location.hash = ''; render(); }, 1500);
 }
 
-function showLoginError(msg) {
-  const el = document.getElementById('login-error');
-  if (el) { el.textContent = msg; el.style.display = 'block'; }
+async function showForgotPassword() {
+  const email = document.getElementById('l-email')?.value?.trim();
+  if (!email) { showLoginMsg('Wpisz najpierw email.', 'error'); return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.href });
+  if (error) { showLoginMsg(error.message, 'error'); return; }
+  showLoginMsg('Wysłano link resetujący na ' + email, 'success');
+}
+
+function showLoginMsg(msg, type='info') {
+  const el = document.getElementById('login-msg');
+  if (!el) return;
+  el.style.display = 'block';
+  el.style.color = type === 'error' ? 'var(--red)' : type === 'success' ? 'var(--green)' : 'var(--text2)';
+  el.textContent = msg;
 }
 
 function renderSidebar() {
