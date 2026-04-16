@@ -1596,7 +1596,15 @@ function debounce(fn, ms=300) {
 
 function bindEvents() {
   const si = document.getElementById('search-input');
-  if (si) si.addEventListener('input', debounce(e => { state.search = e.target.value; render(); }, 300));
+  if (si) si.addEventListener('input', e => {
+    state.search = e.target.value;
+    clearTimeout(_debounceTimer);
+    if (e.target.value === '' || e.inputType === 'deleteContentBackward' || e.inputType === 'deleteContentForward') {
+      render();
+    } else {
+      _debounceTimer = setTimeout(() => render(), 300);
+    }
+  });
   const kf = document.getElementById('kat-filter');
   if (kf) kf.addEventListener('change', e => { state.filterKat = e.target.value; render(); });
   const sf = document.getElementById('stan-filter');
@@ -1606,7 +1614,15 @@ function bindEvents() {
   const imp = document.getElementById('import-file');
   if (imp) imp.addEventListener('change', handleImportFile);
   const evs = document.getElementById('ev-search');
-  if (evs) evs.addEventListener('input', debounce(e => { state.evSearch = e.target.value; render(); }, 300));
+  if (evs) evs.addEventListener('input', e => {
+    state.evSearch = e.target.value;
+    clearTimeout(_debounceTimer);
+    if (e.target.value === '' || e.inputType === 'deleteContentBackward' || e.inputType === 'deleteContentForward') {
+      render();
+    } else {
+      _debounceTimer = setTimeout(() => render(), 300);
+    }
+  });
 }
 
 // ─── HELPERS ───
