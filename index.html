@@ -1586,9 +1586,17 @@ async function saveChecklist() {
 }
 
 // ─── BIND EVENTS ───
+let _debounceTimer = null;
+function debounce(fn, ms=300) {
+  return function(...args) {
+    clearTimeout(_debounceTimer);
+    _debounceTimer = setTimeout(() => fn(...args), ms);
+  };
+}
+
 function bindEvents() {
   const si = document.getElementById('search-input');
-  if (si) si.addEventListener('input', e => { state.search = e.target.value; render(); });
+  if (si) si.addEventListener('input', debounce(e => { state.search = e.target.value; render(); }, 300));
   const kf = document.getElementById('kat-filter');
   if (kf) kf.addEventListener('change', e => { state.filterKat = e.target.value; render(); });
   const sf = document.getElementById('stan-filter');
@@ -1598,7 +1606,7 @@ function bindEvents() {
   const imp = document.getElementById('import-file');
   if (imp) imp.addEventListener('change', handleImportFile);
   const evs = document.getElementById('ev-search');
-  if (evs) evs.addEventListener('input', e => { state.evSearch = e.target.value; render(); });
+  if (evs) evs.addEventListener('input', debounce(e => { state.evSearch = e.target.value; render(); }, 300));
 }
 
 // ─── HELPERS ───
