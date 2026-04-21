@@ -265,7 +265,7 @@ td.muted { color: var(--text2); font-size: 13px; }
 const SUPABASE_URL    = 'https://yxbwhwmntvdzvwlanczf.supabase.co';
 const SUPABASE_ANON   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4Yndod21udHZkenZ3bGFuY3pmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMzYwMzMsImV4cCI6MjA5MTcxMjAzM30.-zqRhNYSwcIqsZU7HTt5dpbbNypFUq7Fz1_dZ4xwXoA';
 const APP_VERSION     = '1.3.0';
-const ALLOWED_DOMAIN  = 'topart.pl';
+const ALLOWED_DOMAINS = ['topart.pl', 'qmk.pl']; // dozwolone domeny
 const EVENT_COLORS = ['#7c6af7','#34d399','#f87171','#fbbf24','#60a5fa','#f472b6','#a78bfa','#34d3d3','#fb923c','#a3e635'];
 const ADMIN_EMAILS    = [];  // np. ['adam@topart.pl'] — admini mogą edytować i usuwać
 </script>
@@ -532,12 +532,12 @@ function renderLoginScreen() {
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:44px 36px;width:100%;max-width:400px">
       <div style="font-family:var(--mono);font-size:11px;color:var(--accent2);letter-spacing:.1em;margin-bottom:16px;text-align:center">SPRZĘT EVENTOWY v${APP_VERSION}</div>
       <h2 style="font-size:22px;font-weight:600;margin-bottom:6px;text-align:center">${isReset ? 'Ustaw nowe hasło' : 'Zaloguj się'}</h2>
-      <p style="font-size:13px;color:var(--text2);margin-bottom:28px;text-align:center">Dostęp tylko dla kont <span style="color:var(--accent2);font-family:var(--mono)">@${ALLOWED_DOMAIN}</span></p>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:28px;text-align:center">Dostęp tylko dla kont <span style="color:var(--accent2);font-family:var(--mono)">@${ALLOWED_DOMAINS.join('</span> lub <span style="color:var(--accent2);font-family:var(--mono)">@')}</span></p>
       ${isReset ? `
       <div class="field"><label>Nowe hasło</label><input id="l-newpass" type="password" placeholder="min. 8 znaków"></div>
       <button class="btn btn-primary" style="width:100%;justify-content:center;height:42px;margin-top:4px" onclick="doResetPassword()">Ustaw hasło</button>
       ` : `
-      <div class="field"><label>Email</label><input id="l-email" type="email" placeholder="jan@topart.pl" onkeydown="if(event.key==='Enter')document.getElementById('l-pass').focus()"></div>
+      <div class="field"><label>Email</label><input id="l-email" type="email" placeholder="jan@topart.pl / jan@qmk.pl" onkeydown="if(event.key==='Enter')document.getElementById('l-pass').focus()"></div>
       <div class="field"><label>Hasło</label><input id="l-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
       <div style="text-align:right;margin:-6px 0 16px">
         <button class="btn btn-ghost" style="font-size:12px;height:auto;padding:4px 0;border:none" onclick="showForgotPassword()">Zapomniałem hasła</button>
@@ -553,7 +553,7 @@ async function doLogin() {
   const email = document.getElementById('l-email')?.value?.trim();
   const pass  = document.getElementById('l-pass')?.value;
   if (!email || !pass) { showLoginMsg('Wypełnij email i hasło.', 'error'); return; }
-  if (!email.endsWith('@' + ALLOWED_DOMAIN)) { showLoginMsg('Tylko konta @' + ALLOWED_DOMAIN, 'error'); return; }
+  if (!ALLOWED_DOMAINS.some(d => email.endsWith('@' + d))) { showLoginMsg('Tylko konta @' + ALLOWED_DOMAINS.join(' lub @'), 'error'); return; }
   showLoginMsg('Logowanie...', 'info');
   const { error } = await sb.auth.signInWithPassword({ email, password: pass });
   if (error) showLoginMsg(error.message === 'Invalid login credentials' ? 'Błędny email lub hasło.' : error.message, 'error');
@@ -743,6 +743,7 @@ function renderEvents() {
     <div class="topbar">
       <div><div class="page-title">Eventy</div><div class="page-subtitle">${state.events.length} eventów w bazie</div></div>
       <div class="topbar-actions">
+        <button class="btn" onclick="generatePDF('events')">⎙ Raport PDF</button>
         <button class="btn btn-primary" onclick="openModal('event-add')">+ Dodaj event</button>
       </div>
     </div>
@@ -1366,6 +1367,7 @@ function renderClients() {
     <div class="topbar">
       <div><div class="page-title">Klienci</div><div class="page-subtitle">${clients.length} klientów</div></div>
       <div class="topbar-actions">
+        <button class="btn" onclick="generatePDF('clients')">⎙ Raport PDF</button>
         ${state.isAdmin ? `<button class="btn btn-primary" onclick="openModal('client-add')">+ Dodaj klienta</button>` : ''}
       </div>
     </div>
@@ -1731,7 +1733,7 @@ function renderInviteModal() {
     <div class="modal" onclick="event.stopPropagation()" style="max-width:420px">
       <div class="modal-header"><h3>Zaproś użytkownika</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
       <div class="modal-body">
-        <div class="field"><label>Email *</label><input id="inv-email" type="email" placeholder="jan@topart.pl"></div>
+        <div class="field"><label>Email *</label><input id="inv-email" type="email" placeholder="jan@topart.pl / jan@qmk.pl"></div>
         <div class="field"><label>Imię i nazwisko</label><input id="inv-name" placeholder="Jan Kowalski"></div>
         <div class="field"><label>Rola</label>
           <select id="inv-role">
@@ -1756,7 +1758,7 @@ async function submitInvite() {
   const name  = document.getElementById('inv-name')?.value?.trim();
   const role  = document.getElementById('inv-role')?.value;
   if (!email) { toast('Podaj email','error'); return; }
-  if (!email.endsWith('@' + ALLOWED_DOMAIN)) { toast('Tylko konta @' + ALLOWED_DOMAIN,'error'); return; }
+  if (!ALLOWED_DOMAINS.some(d => email.endsWith('@' + d))) { toast('Tylko konta @' + ALLOWED_DOMAINS.join(' lub @'),'error'); return; }
   // Zapisz profil w bazie (użytkownik zostanie utworzony przy pierwszym logowaniu)
   const { error } = await sb.from('user_profiles').upsert({ email, full_name: name||null, role }, { onConflict: 'email' });
   if (error) { toast('Błąd: '+error.message,'error'); return; }
@@ -1913,28 +1915,16 @@ async function executeImport() {
 }
 
 // ─── PDF REPORT ───
-function generatePDF() {
+function generatePDF(type) {
+  if (!type) type = 'inventory';
   const evMap = {};
   state.events.forEach(e => evMap[e.id] = e.nazwa);
   const clMap = {};
   state.clients.forEach(c => clMap[c.id] = c.nazwa);
   const date = new Date().toLocaleDateString('pl-PL');
-  const rows = state.items.map(i => `
-    <tr>
-      <td>${esc(i.nazwa)}</td>
-      <td>${esc(i.kategoria||'—')}</td>
-      <td style="text-align:center">${i.ilosc}</td>
-      <td>${esc(i.stan)}</td>
-      <td>${esc(i.lokalizacja||'—')}</td>
-      <td>${esc(i.sn||'—')}</td>
-      <td>${i.owner_id && clMap[i.owner_id] ? esc(clMap[i.owner_id]) : '—'}</td>
-      <td>${i.event_id && evMap[i.event_id] ? esc(evMap[i.event_id]) : '—'}</td>
-      <td>${i.data_wypozyczenia||'—'}${i.data_zwrotu?' – '+i.data_zwrotu:''}</td>
-      <td>${esc(i.uwagi||'—')}</td>
-    </tr>`).join('');
-  const html = `<!DOCTYPE html><html lang="pl"><head><meta charset="UTF-8">
-  <title>Raport inwentaryzacji</title>
-  <style>
+  const user = getUserName();
+
+  const style = `
     body { font-family: Arial, sans-serif; font-size: 10px; color: #111; margin: 20px; }
     h1 { font-size: 16px; margin-bottom: 4px; }
     .meta { color: #666; font-size: 10px; margin-bottom: 16px; }
@@ -1942,18 +1932,67 @@ function generatePDF() {
     th { background: #1a1a2e; color: #fff; padding: 6px 7px; text-align: left; font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
     td { padding: 5px 7px; border-bottom: 1px solid #e5e5e5; vertical-align: top; }
     tr:nth-child(even) td { background: #f9f9f9; }
-    @media print { body { margin: 0; } @page { size: A4 landscape; margin: 10mm; } }
-  </style></head><body>
-  <h1>Raport inwentaryzacji sprzętu eventowego</h1>
-  <div class="meta">Wygenerowano: ${date} &nbsp;·&nbsp; Łącznie pozycji: ${state.items.length} &nbsp;·&nbsp; Użytkownik: ${getUserName()}</div>
-  <table>
-    <thead><tr>
-      <th>Nazwa</th><th>Kategoria</th><th>Ilość</th><th>Stan</th>
-      <th>Lokalizacja</th><th>Nr seryjny</th><th>Właściciel</th>
-      <th>Event</th><th>Daty</th><th>Uwagi</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
+    @media print { body { margin: 0; } @page { size: A4 landscape; margin: 10mm; } }`;
+
+  let title, meta, thead, tbody;
+
+  if (type === 'inventory') {
+    title = 'Raport inwentaryzacji sprzętu';
+    meta = `Wygenerowano: ${date} · Pozycji: ${state.items.length} · Użytkownik: ${user}`;
+    thead = '<tr><th>Nazwa</th><th>Kategoria</th><th>Ilość</th><th>Stan</th><th>Lokalizacja</th><th>Nr seryjny</th><th>Właściciel</th><th>Event</th><th>Daty</th><th>Uwagi</th></tr>';
+    tbody = state.items.map(i => `<tr>
+      <td>${esc(i.nazwa)}</td><td>${esc(i.kategoria||'—')}</td><td>${i.ilosc}</td><td>${esc(i.stan)}</td>
+      <td>${esc(i.lokalizacja||'—')}</td><td>${esc(i.sn||'—')}</td>
+      <td>${i.owner_id&&clMap[i.owner_id]?esc(clMap[i.owner_id]):'—'}</td>
+      <td>${i.event_id&&evMap[i.event_id]?esc(evMap[i.event_id]):'—'}</td>
+      <td>${i.data_wypozyczenia||'—'}${i.data_zwrotu?' – '+i.data_zwrotu:''}</td>
+      <td>${esc(i.uwagi||'—')}</td></tr>`).join('');
+
+  } else if (type === 'events') {
+    title = 'Raport eventów';
+    meta = `Wygenerowano: ${date} · Eventów: ${state.events.length} · Użytkownik: ${user}`;
+    thead = '<tr><th>Nazwa</th><th>Miasto</th><th>Data od</th><th>Data do</th><th>Klient</th><th>Sprzęt (szt.)</th><th>Uwagi</th></tr>';
+    tbody = state.events.map(e => {
+      const count = state.items.filter(i=>i.event_id===e.id).length;
+      return `<tr>
+        <td>${esc(e.nazwa)}</td><td>${esc(e.miasto||'—')}</td>
+        <td>${e.date_start||'—'}</td><td>${e.date_end||'—'}</td>
+        <td>${e.client_id&&clMap[e.client_id]?esc(clMap[e.client_id]):'—'}</td>
+        <td>${count}</td><td>${esc(e.uwagi||'—')}</td></tr>`;
+    }).join('');
+
+  } else if (type === 'clients') {
+    title = 'Raport klientów';
+    meta = `Wygenerowano: ${date} · Klientów: ${state.clients.length} · Użytkownik: ${user}`;
+    thead = '<tr><th>Nazwa</th><th>Kontakt</th><th>Telefon</th><th>Email</th><th>Adres</th><th>Eventy</th><th>Sprzęt własny</th><th>Uwagi</th></tr>';
+    tbody = state.clients.map(c => {
+      const evCount = state.events.filter(e=>e.client_id===c.id).length;
+      const itemCount = state.items.filter(i=>i.owner_id===c.id).length;
+      return `<tr>
+        <td>${esc(c.nazwa)}</td><td>${esc(c.kontakt||'—')}</td><td>${esc(c.telefon||'—')}</td>
+        <td>${esc(c.email||'—')}</td><td>${esc(c.adres||'—')}</td>
+        <td>${evCount}</td><td>${itemCount}</td><td>${esc(c.uwagi||'—')}</td></tr>`;
+    }).join('');
+
+  } else if (type === 'history') {
+    title = 'Raport historii zmian';
+    meta = `Wygenerowano: ${date} · Operacji: ${state.history.length} · Użytkownik: ${user}`;
+    thead = '<tr><th>Data</th><th>Użytkownik</th><th>Akcja</th><th>Sprzęt</th><th>Szczegóły</th></tr>';
+    const itemMap = {};
+    state.items.forEach(i => itemMap[i.id] = i.nazwa);
+    tbody = state.history.map(h => {
+      const d = new Date(h.created_at).toLocaleString('pl-PL');
+      return `<tr>
+        <td>${d}</td><td>${esc(h.user_name||'—')}</td><td>${esc(h.action||'—')}</td>
+        <td>${esc(itemMap[h.equipment_id]||'—')}</td><td>${esc(h.details||'—')}</td></tr>`;
+    }).join('');
+  }
+
+  const html = `<!DOCTYPE html><html lang="pl"><head><meta charset="UTF-8"><title>${title}</title>
+  <style>${style}</style></head><body>
+  <h1>${title}</h1>
+  <div class="meta">${meta}</div>
+  <table><thead>${thead}</thead><tbody>${tbody}</tbody></table>
   <script>window.onload=()=>window.print()<\/script>
   </body></html>`;
   const w = window.open('', '_blank');
@@ -1985,9 +2024,9 @@ async function initAuth() {
   const { data: { session } } = await sb.auth.getSession();
   if (session?.user) {
     const email = session.user.email || '';
-    if (!email.endsWith('@' + ALLOWED_DOMAIN)) {
+    if (!ALLOWED_DOMAINS.some(d => email.endsWith('@' + d))) {
       await sb.auth.signOut();
-      toast('Brak dostępu. Wymagane konto @' + ALLOWED_DOMAIN, 'error');
+      toast('Brak dostępu. Wymagane konto @' + ALLOWED_DOMAINS.join(' lub @'), 'error');
       state.authLoading = false; render(); return;
     }
     state.authUser = session.user;
@@ -2000,9 +2039,9 @@ async function initAuth() {
   sb.auth.onAuthStateChange(async (event, session) => {
     if (session?.user) {
       const email = session.user.email || '';
-      if (!email.endsWith('@' + ALLOWED_DOMAIN)) {
+      if (!ALLOWED_DOMAINS.some(d => email.endsWith('@' + d))) {
         await sb.auth.signOut();
-        toast('Brak dostępu. Wymagane konto @' + ALLOWED_DOMAIN, 'error');
+        toast('Brak dostępu. Wymagane konto @' + ALLOWED_DOMAINS.join(' lub @'), 'error');
         state.authUser = null; state.isAdmin = false; render(); return;
       }
       state.authUser = session.user;
