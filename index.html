@@ -801,6 +801,7 @@ function renderEventDetail(eventId) {
       </div>
       <div class="topbar-actions">
         <span style="font-size:13px;color:var(--text2);align-self:center">${assigned.length} pozycji przypisanych</span>
+        <button class="btn" onclick="generatePDF('event-detail','${eventId}')">⎙ Raport PDF</button>
         <button class="btn" onclick="openChecklist('${eventId}')">☑ Lista kontrolna</button>
       </div>
     </div>
@@ -1411,6 +1412,9 @@ function renderClientDetail(clientId) {
         <div class="page-title">${esc(c.nazwa)}</div>
         <div class="page-subtitle">${c.kontakt?esc(c.kontakt)+' · ':''}${c.email||''}</div>
       </div>
+      <div class="topbar-actions">
+        <button class="btn" onclick="generatePDF('client-detail','${clientId}')">⎙ Raport PDF</button>
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
       <div class="table-wrap" style="padding:0">
@@ -1915,7 +1919,7 @@ async function executeImport() {
 }
 
 // ─── PDF REPORT ───
-function generatePDF(type) {
+function generatePDF(type, id) {
   if (!type) type = 'inventory';
   const evMap = {};
   state.events.forEach(e => evMap[e.id] = e.nazwa);
@@ -1986,6 +1990,63 @@ function generatePDF(type) {
         <td>${d}</td><td>${esc(h.user_name||'—')}</td><td>${esc(h.action||'—')}</td>
         <td>${esc(itemMap[h.equipment_id]||'—')}</td><td>${esc(h.details||'—')}</td></tr>`;
     }).join('');
+
+  } else if (type === 'event-detail' && id) {
+    const ev = state.events.find(e=>e.id===id);
+    const evItems = state.items.filter(i=>i.event_id===id);
+    const cl = ev?.client_id ? state.clients.find(c=>c.id===ev.client_id) : null;
+    title = `Zestawienie sprzętu — ${esc(ev?.nazwa||'')}`;
+    meta = `Event: ${esc(ev?.nazwa||'')} · ${ev?.date_start||''}${ev?.date_end?' – '+ev.date_end:''} · ${ev?.miasto||''} · Klient: ${cl?esc(cl.nazwa):'—'} · Sprzęt: ${evItems.length} szt. · Wygenerowano: ${date}`;
+    thead = '<tr><th>Nazwa</th><th>Kategoria</th><th>Ilość</th><th>Stan</th><th>Lokalizacja</th><th>Nr seryjny</th><th>Właściciel</th><th>Uwagi</th></tr>';
+    tbody = evItems.map(i => `<tr>
+      <td>${esc(i.nazwa)}</td><td>${esc(i.kategoria||'—')}</td><td>${i.ilosc}</td><td>${esc(i.stan)}</td>
+      <td>${esc(i.lokalizacja||'—')}</td><td>${esc(i.sn||'—')}</td>
+      <td>${i.owner_id&&clMap[i.owner_id]?esc(clMap[i.owner_id]):'—'}</td>
+      <td>${esc(i.uwagi||'—')}</td></tr>`).join('');
+    if (!evItems.length) tbody = '<tr><td colspan="8" style="text-align:center;color:#999">Brak sprzętu przypisanego do eventu</td></tr>';
+
+  } else if (type === 'client-detail' && id) {
+    const cl = state.clients.find(c=>c.id===id);
+    const clEvents = state.events.filter(e=>e.client_id===id);
+    const ownItems = state.items.filter(i=>i.owner_id===id);
+    title = `Zestawienie klienta — ${esc(cl?.nazwa||'')}`;
+    meta = `Klient: ${esc(cl?.nazwa||'')} · Kontakt: ${esc(cl?.kontakt||'—')} · Email: ${esc(cl?.email||'—')} · Eventy: ${clEvents.length} · Własny sprzęt: ${ownItems.length} szt. · Wygenerowano: ${date}`;
+
+    // Sekcja 1: Własny sprzęt
+    let ownSection = '';
+    if (ownItems.length) {
+      ownSection = `<h2 style="font-size:13px;margin:20px 0 8px;color:#1a1a2e">Własny sprzęt klienta (${ownItems.length} szt.)</h2>
+      <table><thead><tr><th>Nazwa</th><th>Kategoria</th><th>Ilość</th><th>Stan</th><th>Lokalizacja</th><th>Nr seryjny</th></tr></thead>
+      <tbody>${ownItems.map(i=>`<tr><td>${esc(i.nazwa)}</td><td>${esc(i.kategoria||'—')}</td><td>${i.ilosc}</td><td>${esc(i.stan)}</td><td>${esc(i.lokalizacja||'—')}</td><td>${esc(i.sn||'—')}</td></tr>`).join('')}</tbody></table>`;
+    }
+
+    // Sekcja 2: Per event
+    let evSections = clEvents.map(ev => {
+      const evItems = state.items.filter(i=>i.event_id===ev.id);
+      return `<h2 style="font-size:13px;margin:20px 0 8px;color:#1a1a2e">Event: ${esc(ev.nazwa)} ${ev.date_start?'('+ev.date_start+(ev.date_end?' – '+ev.date_end:'')+'_':''} — ${evItems.length} szt.</h2>
+      ${evItems.length ? `<table><thead><tr><th>Nazwa</th><th>Kategoria</th><th>Ilość</th><th>Stan</th><th>Lokalizacja</th><th>Uwagi</th></tr></thead>
+      <tbody>${evItems.map(i=>`<tr><td>${esc(i.nazwa)}</td><td>${esc(i.kategoria||'—')}</td><td>${i.ilosc}</td><td>${esc(i.stan)}</td><td>${esc(i.lokalizacja||'—')}</td><td>${esc(i.uwagi||'—')}</td></tr>`).join('')}</tbody></table>` : '<p style="color:#999;font-size:10px">Brak sprzętu</p>'}`;
+    }).join('');
+
+    // Dla client-detail używamy custom HTML zamiast standard table
+    const customHtml = `<!DOCTYPE html><html lang="pl"><head><meta charset="UTF-8"><title>${title}</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 10px; color: #111; margin: 20px; }
+      h1 { font-size: 16px; margin-bottom: 4px; } h2 { font-size: 13px; }
+      .meta { color: #666; font-size: 10px; margin-bottom: 16px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+      th { background: #1a1a2e; color: #fff; padding: 6px 7px; text-align: left; font-size: 9px; text-transform: uppercase; }
+      td { padding: 5px 7px; border-bottom: 1px solid #e5e5e5; }
+      tr:nth-child(even) td { background: #f9f9f9; }
+      @media print { body { margin: 0; } @page { size: A4 landscape; margin: 10mm; } }
+    </style></head><body>
+    <h1>${title}</h1><div class="meta">${meta}</div>
+    ${ownSection}${evSections}
+    <script>window.onload=()=>window.print()<\/script></body></html>`;
+    const w = window.open('', '_blank');
+    w.document.write(customHtml);
+    w.document.close();
+    return;
   }
 
   const html = `<!DOCTYPE html><html lang="pl"><head><meta charset="UTF-8"><title>${title}</title>
